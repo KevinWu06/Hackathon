@@ -147,7 +147,10 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     Interests: {', '.join(interests)}
     
     Please provide the response in the following structured format:
-    
+
+    Don't include this part, but make sure that after commas or periods, the formatting is not messed up. This includes itallicized texts with no spaces in between. 
+    Don't include this part, but make sure that the formatting is not messed up for the entire itinerary, including bullet points. 
+
     # Overview
     [Brief introduction about the trip and why these destinations work well together]
     
@@ -161,7 +164,8 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     - Evening activities and costs
     - Restaurant recommendations near the area of the activities
     - Travel between destinations if applicable
-    - Daily spending total (formatted as Spending: $X). Make sure X is greater than 0.8 * ${budget}. If it is not, make sure to adjust the activities and costs to make sure that the daily spending is at least 80% of the daily budget.
+    - MUST INCLUDE: Hotel costs
+    - Daily spending total (formatted as Spending: $X). Make sure that this is on its own separate bullet point. Make sure X is greater than 0.8 * ${budget}. If it is not, make sure to adjust the activities and costs to make sure that the daily spending is at least 80% of the daily budget.
     Make sure that every single day is its separate day in the itinerary.]
     
     # Accommodation Recommendations
@@ -182,6 +186,9 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     # Estimated Costs
     [Detailed cost breakdown showing exactly how the ${budget} daily budget will be spent]
     [Sum the total estimated cost of the trip and format it as Total: $X] Make sure that this sum is correct by double checking before you print it out.
+
+    Don't include this part, but make sure that after commas or periods, the formatting is not messed up. This includes itallicized texts with no spaces in between. 
+    Don't include this part, but make sure that the formatting is not messed up for the entire itinerary, including bullet points. 
     
     # Packing Recommendations
     [Season-appropriate packing list for all destinations]
