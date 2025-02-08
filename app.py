@@ -12,9 +12,14 @@ import io
 # Configure page
 st.set_page_config(
     page_title="AI Travel Planner Pro",
-    page_icon="✈️",
+    page_icon="✈️", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'mailto:support@aitravelplanner.com',
+        'Report a bug': 'mailto:bugs@aitravelplanner.com',
+        'About': 'AI Travel Planner Pro - Your personal travel assistant'
+    }
 )
 
 # Custom CSS for better styling
@@ -159,10 +164,13 @@ with st.sidebar:
     with col2:
         duration = st.number_input("Duration (days)", min_value=1, max_value=30, value=5)
     
-    budget = st.select_slider(
-        "Budget Level",
-        options=["Budget", "Mid-range", "Luxury"],
-        value="Mid-range"
+    budget = st.slider(
+        "Daily Budget (USD)",
+        min_value=0,
+        max_value=2000,
+        value=500,
+        step=50,
+        format="$%d"
     )
     
     interests = st.multiselect(
@@ -177,6 +185,35 @@ with st.sidebar:
         "Preferred Language",
         ["English", "Spanish", "French", "German", "Japanese", "Chinese"]
     )
+
+# Add this function for PDF conversion
+def create_pdf(travel_plan: str, destination: str) -> bytes:
+    class PDF(FPDF):
+        def header(self):
+            self.set_font('Arial', 'B', 15)
+            self.cell(0, 10, f'Travel Plan - {destination}', 0, 1, 'C')
+            self.ln(10)
+        
+        def footer(self):
+            self.set_y(-15)
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_font('Arial', '', 12)
+    
+    # Split text into lines and add to PDF
+    lines = travel_plan.split('\n')
+    for line in lines:
+        if line.startswith('#'):  # Handle headers
+            pdf.set_font('Arial', 'B', 14)
+            pdf.cell(0, 10, line.replace('#', '').strip(), 0, 1)
+            pdf.set_font('Arial', '', 12)
+        else:
+            pdf.multi_cell(0, 10, line)
+    
+    return pdf.output(dest='S').encode('latin-1')
 
 # Main content area
 st.title("🌎 AI Travel Planner Pro")
@@ -408,31 +445,3 @@ with col2:
     </div>
     """, unsafe_allow_html=True)
 
-# Add this function for PDF conversion
-def create_pdf(travel_plan: str, destination: str) -> bytes:
-    class PDF(FPDF):
-        def header(self):
-            self.set_font('Arial', 'B', 15)
-            self.cell(0, 10, f'Travel Plan - {destination}', 0, 1, 'C')
-            self.ln(10)
-        
-        def footer(self):
-            self.set_y(-15)
-            self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-    pdf = PDF()
-    pdf.add_page()
-    pdf.set_font('Arial', '', 12)
-    
-    # Split text into lines and add to PDF
-    lines = travel_plan.split('\n')
-    for line in lines:
-        if line.startswith('#'):  # Handle headers
-            pdf.set_font('Arial', 'B', 14)
-            pdf.cell(0, 10, line.replace('#', '').strip(), 0, 1)
-            pdf.set_font('Arial', '', 12)
-        else:
-            pdf.multi_cell(0, 10, line)
-    
-    return pdf.output(dest='S').encode('latin-1') 
