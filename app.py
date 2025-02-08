@@ -101,7 +101,7 @@ def calculate_budget_estimate(duration: int, daily_budget: int, destination: str
 
 def generate_travel_plan(destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list):
     duration = (end_date - start_date).days + 1
-    destinations_str = " → ".join(destinations)
+    destinations_str = " to ".join(destinations)
     
     prompt = f"""
     Create a detailed multi-destination travel plan:
@@ -193,7 +193,9 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 15)
-            self.cell(0, 10, f'Travel Plan - {destination}', 0, 1, 'C')
+            # Replace arrow with 'to' to avoid encoding issues
+            safe_destination = destination.replace('→', 'to')
+            self.cell(0, 10, f'Travel Plan - {safe_destination}', 0, 1, 'C')
             self.ln(10)
         
         def footer(self):
@@ -213,7 +215,9 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
             pdf.cell(0, 10, line.replace('#', '').strip(), 0, 1)
             pdf.set_font('Arial', '', 12)
         else:
-            pdf.multi_cell(0, 10, line)
+            # Replace any potential problematic characters
+            safe_line = line.encode('latin-1', errors='replace').decode('latin-1')
+            pdf.multi_cell(0, 10, safe_line)
     
     return pdf.output(dest='S').encode('latin-1')
 
@@ -229,7 +233,7 @@ with tab1:
         if destinations and len(destinations) == num_destinations and interests:
             # Calculate budget estimates
             duration = (end_date - start_date).days + 1
-            budget_data = calculate_budget_estimate(duration, budget, " → ".join(destinations))
+            budget_data = calculate_budget_estimate(duration, budget, " to ".join(destinations))
             
             # Generate and display travel plan
             with st.spinner('Crafting your perfect travel plan...'):
@@ -237,7 +241,7 @@ with tab1:
                 
                 # Save to history
                 st.session_state.travel_history.append({
-                    "destination": " → ".join(destinations),
+                    "destination": " to ".join(destinations),
                     "date": start_date.strftime("%Y-%m-%d"),
                     "duration": duration,
                     "budget": budget,
@@ -258,7 +262,7 @@ with tab1:
                 )
             with col2:
                 try:
-                    pdf_data = create_pdf(travel_plan, " → ".join(destinations))
+                    pdf_data = create_pdf(travel_plan, " to ".join(destinations))
                     st.download_button(
                         label="📥 Download as PDF",
                         data=pdf_data,
