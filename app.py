@@ -81,69 +81,66 @@ model = genai.GenerativeModel(
     generation_config=generation_config
 )
 
-def calculate_budget_estimate(duration: int, budget_level: str, destination: str):
-    budget_multipliers = {
-        "Budget": 1,
-        "Mid-range": 2,
-        "Luxury": 4
-    }
+def calculate_budget_estimate(duration: int, daily_budget: int, destination: str):
+    # Calculate total estimate based on daily budget and duration
+    total_estimate = daily_budget * duration
     
-    # Base daily costs (USD) - could be made more sophisticated
-    base_costs = {
-        "accommodation": 50,
-        "food": 30,
-        "activities": 40,
-        "transportation": 20
+    # Calculate breakdown based on typical travel expense ratios
+    breakdown = {
+        "accommodation": daily_budget * 0.4,  # 40% for accommodation
+        "food": daily_budget * 0.2,           # 20% for food
+        "activities": daily_budget * 0.2,     # 20% for activities
+        "transportation": daily_budget * 0.2   # 20% for transportation
     }
-    
-    multiplier = budget_multipliers[budget_level]
-    daily_total = sum(base_costs.values()) * multiplier
-    total_estimate = daily_total * duration
     
     return {
-        "daily_total": daily_total,
+        "daily_total": daily_budget,
         "total_estimate": total_estimate,
-        "breakdown": {k: v * multiplier for k, v in base_costs.items()}
+        "breakdown": breakdown
     }
 
-def generate_travel_plan(destination: str, duration: int, budget: str, interests: list, travel_date: datetime):
+def generate_travel_plan(destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list):
+    duration = (end_date - start_date).days + 1
+    destinations_str = " → ".join(destinations)
+    
     prompt = f"""
-    Create a detailed travel plan for {destination} for {duration} days.
-    Travel Date: {travel_date.strftime('%B %Y')}
+    Create a detailed multi-destination travel plan:
+    Destinations: {destinations_str}
+    Travel Dates: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} ({duration} days)
     Budget Level: {budget}
     Interests: {', '.join(interests)}
     
     Please provide the response in the following structured format:
     
     # Overview
-    [Brief introduction about {destination} and why it's great for the selected interests]
+    [Brief introduction about the trip and why these destinations work well together]
     
     # Weather and Best Time to Visit
-    [Information about weather during {travel_date.strftime('%B')} and general best times to visit]
+    [Information about weather during the travel period for each destination]
     
-    # Day-by-Day Itinerary
-    [Detailed day-by-day breakdown]
+    # Multi-City Itinerary
+    [Detailed day-by-day breakdown including travel between destinations]
     
     # Accommodation Recommendations
-    [List of recommended hotels for {budget} budget]
+    [List of recommended hotels for {budget} budget in each city]
     
     # Transportation
-    [Detailed transportation options and tips]
+    [Detailed transportation options between cities and within each destination]
     
     # Local Customs & Etiquette
-    [Important cultural notes and etiquette tips]
+    [Important cultural notes and etiquette tips for each destination]
     
     # Must-Try Local Cuisine
-    [List of recommended local dishes and where to find them]
+    [List of recommended local dishes for each destination]
     
     # Safety Tips
-    [Important safety information and emergency contacts]
+    [Important safety information and emergency contacts for each location]
     
     # Estimated Costs
-    [Detailed cost breakdown for {budget} budget]
+    [Detailed cost breakdown for {budget} budget including inter-city travel]
     
     # Packing Recommendations
-    [Season-appropriate packing list]
+    [Season-appropriate packing list for all destinations]
     """
     try:
         response = model.generate_content(prompt)
@@ -156,13 +153,18 @@ with st.sidebar:
     st.image("https://img.icons8.com/clouds/100/airplane-mode-on.png", width=100)
     st.title("Trip Parameters")
     
-    destination = st.text_input("Destination", placeholder="e.g., Tokyo, Japan")
+    # Multiple destination input
+    destinations = []
+    num_destinations = st.number_input("Number of Destinations", min_value=1, max_value=5, value=1)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", min_value=datetime.today())
-    with col2:
-        duration = st.number_input("Duration (days)", min_value=1, max_value=30, value=5)
+    for i in range(num_destinations):
+        dest = st.text_input(f"Destination {i+1}", placeholder="e.g., Tokyo, Japan", key=f"dest_{i}")
+        if dest:
+            destinations.append(dest)
+    
+    # Date selection
+    start_date = st.date_input("Start Date", min_value=datetime.today())
+    end_date = st.date_input("End Date", min_value=start_date)
     
     budget = st.slider(
         "Daily Budget (USD)",
@@ -224,17 +226,18 @@ tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "Travel History
 
 with tab1:
     if st.button("Generate Travel Plan", type="primary"):
-        if destination and duration and interests:
+        if destinations and len(destinations) == num_destinations and interests:
             # Calculate budget estimates
-            budget_data = calculate_budget_estimate(duration, budget, destination)
+            duration = (end_date - start_date).days + 1
+            budget_data = calculate_budget_estimate(duration, budget, " → ".join(destinations))
             
             # Generate and display travel plan
             with st.spinner('Crafting your perfect travel plan...'):
-                travel_plan = generate_travel_plan(destination, duration, budget, interests, start_date)
+                travel_plan = generate_travel_plan(destinations, start_date, end_date, budget, interests)
                 
                 # Save to history
                 st.session_state.travel_history.append({
-                    "destination": destination,
+                    "destination": " → ".join(destinations),
                     "date": start_date.strftime("%Y-%m-%d"),
                     "duration": duration,
                     "budget": budget,
@@ -250,16 +253,16 @@ with tab1:
                 st.download_button(
                     label="📥 Download as Text",
                     data=travel_plan,
-                    file_name=f"travel_plan_{destination.replace(' ', '_')}.txt",
+                    file_name=f"travel_plan_{'-'.join(destinations).replace(' ', '_')}.txt",
                     mime="text/plain"
                 )
             with col2:
                 try:
-                    pdf_data = create_pdf(travel_plan, destination)
+                    pdf_data = create_pdf(travel_plan, " → ".join(destinations))
                     st.download_button(
                         label="📥 Download as PDF",
                         data=pdf_data,
-                        file_name=f"travel_plan_{destination.replace(' ', '_')}.pdf",
+                        file_name=f"travel_plan_{'-'.join(destinations).replace(' ', '_')}.pdf",
                         mime="application/pdf"
                     )
                 except Exception as e:
@@ -444,4 +447,3 @@ with col2:
     - Follow us on social media for travel tips
     </div>
     """, unsafe_allow_html=True)
-
