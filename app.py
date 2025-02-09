@@ -18,6 +18,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google.auth.transport.requests import Request
+import pickle
 
 # Configure page with professional settings
 st.set_page_config(
@@ -114,9 +115,13 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 def get_google_calendar_service():
     """Get or create Google Calendar API service"""
     creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     
+    # Load credentials from pickle file if it exists
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+            
+    # If no valid credentials available, let the user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -124,62 +129,75 @@ def get_google_calendar_service():
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-    
-    return build('calendar', 'v3', credentials=creds)
+            
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        return service
+    except Exception as e:
+        st.error(f"Error building calendar service: {str(e)}")
+        return None
 
 def add_to_google_calendar(travel_plan, start_date, end_date, destinations):
     """Add travel itinerary to Google Calendar"""
     try:
         service = get_google_calendar_service()
-        
+        if not service:
+            st.error("Could not initialize Google Calendar service")
+            return
+            
         # Parse the travel plan to create calendar events
         lines = travel_plan.split('\n')
         current_date = start_date
-        current_event = {}
         
         for line in lines:
             if '**Morning**:' in line or '**Afternoon**:' in line or '**Evening**:' in line:
-                if current_event:
-                    # Create calendar event
-                    event = {
-                        'summary': current_event['title'],
-                        'description': current_event['description'],
-                        'start': {
-                            'dateTime': current_event['start'].isoformat(),
-                            'timeZone': 'UTC',
-                        },
-                        'end': {
-                            'dateTime': current_event['end'].isoformat(),
-                            'timeZone': 'UTC',
-                        },
-                    }
-                    service.events().insert(calendarId='primary', body=event).execute()
-                
-                # Start new event
+                # Extract time of day and activity
                 time_of_day = line.split('**')[1].lower()
-                if 'morning' in time_of_day:
-                    start_time = current_date.replace(hour=9)
-                    end_time = current_date.replace(hour=12)
-                elif 'afternoon' in time_of_day:
-                    start_time = current_date.replace(hour=13)
-                    end_time = current_date.replace(hour=17)
-                else:  # evening
-                    start_time = current_date.replace(hour=18)
-                    end_time = current_date.replace(hour=22)
+                activity = line.split(':', 1)[1].strip()
                 
-                current_event = {
-                    'title': f"Travel: {', '.join(destinations)} - {time_of_day}",
-                    'description': line.split(':', 1)[1].strip(),
-                    'start': start_time,
-                    'end': end_time
+                # Set event times based on time of day
+                if 'morning' in time_of_day:
+                    start_time = current_date.replace(hour=9, minute=0)
+                    end_time = current_date.replace(hour=12, minute=0)
+                elif 'afternoon' in time_of_day:
+                    start_time = current_date.replace(hour=13, minute=0)
+                    end_time = current_date.replace(hour=17, minute=0)
+                else:  # evening
+                    start_time = current_date.replace(hour=18, minute=0)
+                    end_time = current_date.replace(hour=22, minute=0)
+                
+                # Create calendar event
+                event = {
+                    'summary': f"Travel: {', '.join(destinations)} - {time_of_day.title()}",
+                    'description': activity,
+                    'start': {
+                        'dateTime': start_time.isoformat(),
+                        'timeZone': 'UTC',
+                    },
+                    'end': {
+                        'dateTime': end_time.isoformat(),
+                        'timeZone': 'UTC',
+                    },
                 }
+                
+                try:
+                    service.events().insert(calendarId='primary', body=event).execute()
+                except Exception as e:
+                    st.error(f"Error adding event to calendar: {str(e)}")
+                    return
+            
+            # Move to next day if we see a new date marker
+            if "# 📅" in line:
+                current_date += timedelta(days=1)
         
         st.success("Successfully added travel itinerary to Google Calendar!")
         
-    except HttpError as error:
-        st.error(f"An error occurred: {error}")
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
 # Optimize model configuration for high-quality responses
 generation_config = {
@@ -500,6 +518,9 @@ with tab1:
                     "estimated_cost": budget_data["total_estimate"]
                 })
             
+            # Store travel plan in session state
+            st.session_state.current_travel_plan = travel_plan
+            
             # Display the plan
             st.markdown(travel_plan)
             
@@ -527,7 +548,7 @@ with tab1:
                 if st.button("📅 Add to Google Calendar"):
                     try:
                         add_to_google_calendar(
-                            travel_plan,
+                            st.session_state.current_travel_plan,
                             datetime.combine(start_date, datetime.min.time()),
                             datetime.combine(end_date, datetime.min.time()),
                             destinations
