@@ -24,7 +24,7 @@ from PIL import Image
 # Configure page with professional settings
 st.set_page_config(
     page_title="AI Travel Planner Pro",
-    page_icon="website_icon",
+    page_icon=Image.open("website_icon"),
     layout="wide", 
     initial_sidebar_state="expanded",
     menu_items={
