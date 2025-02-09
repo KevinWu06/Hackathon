@@ -12,6 +12,12 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
+# Add new imports for Google Calendar
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request
 
 # Configure page with professional settings
 st.set_page_config(
@@ -102,6 +108,79 @@ if 'travel_history' not in st.session_state:
 os.environ["GEMINI_API_KEY"] = "AIzaSyAE1UNYk-qqRezzLnSAwDYgTpKVOvYyW_4"
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
+# Google Calendar API setup
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+def get_google_calendar_service():
+    """Get or create Google Calendar API service"""
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    
+    return build('calendar', 'v3', credentials=creds)
+
+def add_to_google_calendar(travel_plan, start_date, end_date, destinations):
+    """Add travel itinerary to Google Calendar"""
+    try:
+        service = get_google_calendar_service()
+        
+        # Parse the travel plan to create calendar events
+        lines = travel_plan.split('\n')
+        current_date = start_date
+        current_event = {}
+        
+        for line in lines:
+            if '**Morning**:' in line or '**Afternoon**:' in line or '**Evening**:' in line:
+                if current_event:
+                    # Create calendar event
+                    event = {
+                        'summary': current_event['title'],
+                        'description': current_event['description'],
+                        'start': {
+                            'dateTime': current_event['start'].isoformat(),
+                            'timeZone': 'UTC',
+                        },
+                        'end': {
+                            'dateTime': current_event['end'].isoformat(),
+                            'timeZone': 'UTC',
+                        },
+                    }
+                    service.events().insert(calendarId='primary', body=event).execute()
+                
+                # Start new event
+                time_of_day = line.split('**')[1].lower()
+                if 'morning' in time_of_day:
+                    start_time = current_date.replace(hour=9)
+                    end_time = current_date.replace(hour=12)
+                elif 'afternoon' in time_of_day:
+                    start_time = current_date.replace(hour=13)
+                    end_time = current_date.replace(hour=17)
+                else:  # evening
+                    start_time = current_date.replace(hour=18)
+                    end_time = current_date.replace(hour=22)
+                
+                current_event = {
+                    'title': f"Travel: {', '.join(destinations)} - {time_of_day}",
+                    'description': line.split(':', 1)[1].strip(),
+                    'start': start_time,
+                    'end': end_time
+                }
+        
+        st.success("Successfully added travel itinerary to Google Calendar!")
+        
+    except HttpError as error:
+        st.error(f"An error occurred: {error}")
+
 # Optimize model configuration for high-quality responses
 generation_config = {
     "temperature": 0.85,
@@ -143,7 +222,8 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     
     prompt = f"""
     Create a detailed multi-destination travel plan starting from {starting_location} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
-    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. Make sure to print the entire itinerary every single time.
+    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. 
+    Make sure to print the entire itinerary every single time. Don't just stop halfway through.
 
     Starting Location: {starting_location}
     Destinations: {destinations_str}
@@ -198,6 +278,10 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     
     # 🎒 Packing Recommendations
     [Smart packing list organized by category with insider tips]
+
+    Re-check for any formatting errors and correctness in calculations before printing the itinerary.
+    Make sure to print the entire itinerary every single time. Don't just stop halfway through.
+    Make sure to include the costs for each day and the total cost of the trip.
     """
     try:
         response = model.generate_content(prompt)
@@ -207,7 +291,6 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
 
 # Professional sidebar interface
 with st.sidebar:
-    st.image("https://img.icons8.com/clouds/100/airplane-mode-on.png", width=100)
     st.title("Trip Parameters")
     
     # Add starting location input
@@ -390,7 +473,7 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
     return pdf
 
 # Main content area with professional layout
-st.title("🌎 AI Travel Planner Pro")
+st.title("🌎 AI Trip Saver")
 st.markdown("Your intelligent AI-powered travel planning solution")
 
 # Create organized tabs for different views
@@ -421,7 +504,7 @@ with tab1:
             st.markdown(travel_plan)
             
             # Enhanced download options
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.download_button(
                     label="📥 Download as Text",
@@ -440,6 +523,17 @@ with tab1:
                     )
                 except Exception as e:
                     st.error(f"Error creating PDF: {str(e)}")
+            with col3:
+                if st.button("📅 Add to Google Calendar"):
+                    try:
+                        add_to_google_calendar(
+                            travel_plan,
+                            datetime.combine(start_date, datetime.min.time()),
+                            datetime.combine(end_date, datetime.min.time()),
+                            destinations
+                        )
+                    except Exception as e:
+                        st.error(f"Failed to add to Google Calendar: {str(e)}")
         else:
             st.error("Please complete all required fields to generate your travel plan.")
 
