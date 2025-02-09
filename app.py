@@ -259,7 +259,7 @@ with st.sidebar:
 # Enhanced PDF generation
 def create_pdf(travel_plan: str, destination: str) -> bytes:
     """
-    Create professionally formatted PDF travel plans.
+    Create professionally formatted PDF travel plans with Unicode support.
     """
     class PDF(FPDF):
         def header(self):
@@ -275,19 +275,37 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
 
     pdf = PDF()
     pdf.add_page()
-    pdf.set_font('Arial', '', 12)
+    pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
+    pdf.set_font('DejaVu', '', 12)
+    
+    # Clean the text by removing emojis and other special characters
+    def clean_text(text):
+        import re
+        # Remove emojis and other special characters
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map symbols
+            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            "]+", flags=re.UNICODE)
+        return emoji_pattern.sub('', text)
     
     lines = travel_plan.split('\n')
     for line in lines:
+        cleaned_line = clean_text(line)
         if line.startswith('#'):
-            pdf.set_font('Arial', 'B', 14)
-            pdf.cell(0, 10, line.replace('#', '').strip(), 0, 1)
-            pdf.set_font('Arial', '', 12)
+            pdf.set_font('DejaVu', '', 14)
+            # Remove the # and any emojis from section headers
+            header_text = cleaned_line.replace('#', '').strip()
+            pdf.cell(0, 10, header_text, 0, 1)
+            pdf.set_font('DejaVu', '', 12)
         else:
-            safe_line = line.encode('latin-1', errors='replace').decode('latin-1')
-            pdf.multi_cell(0, 10, safe_line)
+            if cleaned_line.strip():  # Only add non-empty lines
+                pdf.multi_cell(0, 10, cleaned_line)
     
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output(dest='S').encode('latin-1', errors='replace')
 
 # Main content area with professional layout
 st.title("🌎 AI Travel Planner Pro")
