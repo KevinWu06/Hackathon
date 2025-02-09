@@ -7,6 +7,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from fpdf import FPDF 
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from io import BytesIO
 
 # Configure page with professional settings
 st.set_page_config(
@@ -259,53 +264,114 @@ with st.sidebar:
 # Enhanced PDF generation
 def create_pdf(travel_plan: str, destination: str) -> bytes:
     """
-    Create professionally formatted PDF travel plans with Unicode support.
+    Create professionally formatted PDF travel plans with proper markdown handling.
     """
-    class PDF(FPDF):
-        def header(self):
-            self.set_font('Arial', 'B', 15)
-            safe_destination = destination.replace('→', 'to')
-            self.cell(0, 10, f'Travel Plan - {safe_destination}', 0, 1, 'C')
-            self.ln(10)
-        
-        def footer(self):
-            self.set_y(-15)
-            self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-    pdf = PDF()
-    pdf.add_page()
-    pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
-    pdf.set_font('DejaVu', '', 12)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, title=f"Travel Plan - {destination}")
     
-    # Clean the text by removing emojis and other special characters
-    def clean_text(text):
+    # Enhanced styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=30,
+        textColor=colors.HexColor('#1976D2')
+    )
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        spaceAfter=12,
+        textColor=colors.HexColor('#2196F3')
+    )
+    subheading_style = ParagraphStyle(
+        'CustomSubheading',
+        parent=styles['Heading3'],
+        fontSize=12,
+        spaceAfter=8,
+        leftIndent=20,
+        textColor=colors.HexColor('#424242')
+    )
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=12,
+        leftIndent=20
+    )
+    
+    def remove_emojis(text):
         import re
-        # Remove emojis and other special characters
         emoji_pattern = re.compile("["
-            u"\U0001F600-\U0001F64F"  # emoticons
-            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-            u"\U0001F680-\U0001F6FF"  # transport & map symbols
-            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            u"\U0001F600-\U0001F64F"
+            u"\U0001F300-\U0001F5FF"
+            u"\U0001F680-\U0001F6FF"
+            u"\U0001F1E0-\U0001F1FF"
             u"\U00002702-\U000027B0"
             u"\U000024C2-\U0001F251"
+            "✨🌤️📅🌅☀️🌙🍽️🚆🏨💰🚌🎭🍜🛡️🎒→✈️🌎📍⭐💡🔍"
             "]+", flags=re.UNICODE)
-        return emoji_pattern.sub('', text)
+        return emoji_pattern.sub('', text).strip()
     
-    lines = travel_plan.split('\n')
-    for line in lines:
-        cleaned_line = clean_text(line)
-        if line.startswith('#'):
-            pdf.set_font('DejaVu', '', 14)
-            # Remove the # and any emojis from section headers
-            header_text = cleaned_line.replace('#', '').strip()
-            pdf.cell(0, 10, header_text, 0, 1)
-            pdf.set_font('DejaVu', '', 12)
-        else:
-            if cleaned_line.strip():  # Only add non-empty lines
-                pdf.multi_cell(0, 10, cleaned_line)
+    def format_markdown(text):
+        # Handle bold text by replacing ** with HTML bold tags
+        parts = text.split('**')
+        formatted_text = ''
+        for i, part in enumerate(parts):
+            if i % 2 == 1:  # Odd indices are bold
+                formatted_text += f'<b>{part}</b>'
+            else:
+                formatted_text += part
+        return formatted_text
     
-    return pdf.output(dest='S').encode('latin-1', errors='replace')
+    content = []
+    
+    # Add title
+    content.append(Paragraph(f"Travel Plan - {destination}", title_style))
+    
+    # Process the travel plan
+    sections = travel_plan.split('#')
+    for section in sections[1:]:
+        lines = section.split('\n')
+        if not lines:
+            continue
+            
+        current_section = remove_emojis(lines[0].strip())
+        content.append(Paragraph(format_markdown(current_section), heading_style))
+        
+        bullet_group = []
+        for line in lines[1:]:
+            line = line.strip()
+            if not line:
+                continue
+                
+            cleaned_line = remove_emojis(line)
+            
+            # Handle bullet points
+            if line.startswith('-'):
+                cleaned_line = cleaned_line[1:].strip()  # Remove the bullet point
+                formatted_line = format_markdown(cleaned_line)
+                bullet_group.append(f"• {formatted_line}")
+            else:
+                if bullet_group:  # Add any accumulated bullet points
+                    content.append(Paragraph('<br/>'.join(bullet_group), body_style))
+                    bullet_group = []
+                formatted_line = format_markdown(cleaned_line)
+                content.append(Paragraph(formatted_line, body_style))
+        
+        # Add any remaining bullet points
+        if bullet_group:
+            content.append(Paragraph('<br/>'.join(bullet_group), body_style))
+        
+        content.append(Spacer(1, 12))
+    
+    # Build the PDF
+    doc.build(content)
+    
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf
 
 # Main content area with professional layout
 st.title("🌎 AI Travel Planner Pro")
