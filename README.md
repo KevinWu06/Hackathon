@@ -28,3 +28,7 @@ This is a travel planner that uses AI to create a detailed travel plan based on 
 ## Website
 
 https://tripsaver.onrender.com/
+
+## Video
+
+https://youtu.be/7SVsWZbjLZk
