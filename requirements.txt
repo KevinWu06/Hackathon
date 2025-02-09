@@ -1,5 +1,5 @@
 streamlit
-# google-generativeai
+google-generativeai
 datetime
 pandas
 plotly
@@ -7,6 +7,8 @@ fpdf
 phidata
 openai
 duckduckgo-search
-streamlit-calendar==0.4.0
-reportlab==10.1.0
-groq==0.4.2
+streamlit-calendar
+reportlab
+groq
+reportlab
+google-auth-oauthlib
