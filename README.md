@@ -28,4 +28,4 @@ This is a travel planner that uses AI to create a detailed travel plan based on 
 
 ## Website
 
-https://travel-planner-ai.streamlit.app/
+[https://tripsaver.onrender.com/](url)
