@@ -12,6 +12,14 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
+# Add new imports for Google Calendar
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request
+import pickle
+from PIL import Image
 
 # Configure page with professional settings
 st.set_page_config(
@@ -91,6 +99,69 @@ st.markdown("""
         border: 1px solid #e0e0e0;
         border-radius: 8px;
     }
+    /* Chat interface styling */
+    .chat-message {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .chat-message.user {
+        background-color: #f0f2f6;
+    }
+    
+    .chat-message.assistant {
+        background-color: #e3f2fd;
+    }
+    
+    .chat-message .content {
+        display: flex;
+        padding: 0.5rem;
+    }
+    
+    /* Floating LeBron Navigator */
+    .floating-lebron-nav {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 60px;
+        height: 60px;
+        z-index: 9999;
+        cursor: pointer;
+        transition: transform 0.3s ease;
+    }
+    
+    .floating-lebron-nav:hover {
+        transform: scale(1.1);
+    }
+    
+    .floating-lebron-nav img {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        border: 3px solid #1976D2;
+    }
+    
+    .lebron-tooltip {
+        position: absolute;
+        bottom: 70px;
+        right: 0;
+        background: #1976D2;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .floating-lebron-nav:hover .lebron-tooltip {
+        opacity: 1;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -101,6 +172,96 @@ if 'travel_history' not in st.session_state:
 # Configure Gemini API with secure key handling
 os.environ["GEMINI_API_KEY"] = "AIzaSyAE1UNYk-qqRezzLnSAwDYgTpKVOvYyW_4"
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+
+# Google Calendar API setup
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+def get_google_calendar_service():
+    """Get or create Google Calendar API service"""
+    creds = None
+    
+    # Load credentials from pickle file if it exists
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+            
+    # If no valid credentials available, let the user log in
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+            
+        # Save the credentials for the next run
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        return service
+    except Exception as e:
+        st.error(f"Error building calendar service: {str(e)}")
+        return None
+
+def add_to_google_calendar(travel_plan, start_date, end_date, destinations):
+    """Add travel itinerary to Google Calendar"""
+    try:
+        service = get_google_calendar_service()
+        if not service:
+            st.error("Could not initialize Google Calendar service")
+            return
+            
+        # Parse the travel plan to create calendar events
+        lines = travel_plan.split('\n')
+        current_date = start_date
+        
+        for line in lines:
+            if '**Morning**:' in line or '**Afternoon**:' in line or '**Evening**:' in line:
+                # Extract time of day and activity
+                time_of_day = line.split('**')[1].lower()
+                activity = line.split(':', 1)[1].strip()
+                
+                # Set event times based on time of day
+                if 'morning' in time_of_day:
+                    start_time = current_date.replace(hour=9, minute=0)
+                    end_time = current_date.replace(hour=12, minute=0)
+                elif 'afternoon' in time_of_day:
+                    start_time = current_date.replace(hour=13, minute=0)
+                    end_time = current_date.replace(hour=17, minute=0)
+                else:  # evening
+                    start_time = current_date.replace(hour=18, minute=0)
+                    end_time = current_date.replace(hour=22, minute=0)
+                
+                # Create calendar event
+                event = {
+                    'summary': f"Travel: {', '.join(destinations)} - {time_of_day.title()}",
+                    'description': activity,
+                    'start': {
+                        'dateTime': start_time.isoformat(),
+                        'timeZone': 'UTC',
+                    },
+                    'end': {
+                        'dateTime': end_time.isoformat(),
+                        'timeZone': 'UTC',
+                    },
+                }
+                
+                try:
+                    service.events().insert(calendarId='primary', body=event).execute()
+                except Exception as e:
+                    st.error(f"Error adding event to calendar: {str(e)}")
+                    return
+            
+            # Move to next day if we see a new date marker
+            if "# 📅" in line:
+                current_date += timedelta(days=1)
+        
+        st.success("Successfully added travel itinerary to Google Calendar!")
+        
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
 # Optimize model configuration for high-quality responses
 generation_config = {
@@ -134,7 +295,7 @@ def calculate_budget_estimate(duration: int, daily_budget: int, destination: str
         "breakdown": breakdown
     }
 
-def generate_travel_plan(starting_location: str, destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list) -> str:
+def generate_travel_plan(starting_location: str, destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list, return_city: str) -> str:
     """
     Generate comprehensive travel plans using AI with structured formatting.
     """
@@ -142,11 +303,13 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     destinations_str = " to ".join(destinations)
     
     prompt = f"""
-    Create a detailed multi-destination travel plan starting from {starting_location} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
-    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. Make sure to print the entire itinerary every single time.
+    Create a detailed multi-destination travel plan starting from {starting_location} and returning to {return_city} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
+    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. 
+    Make sure to print the entire itinerary every single time. Don't just stop halfway through. (Make sure there are no itallicized words with no spaces in between)
 
     Starting Location: {starting_location}
     Destinations: {destinations_str}
+    Return City: {return_city}
     Travel Dates: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} ({duration} days)
     Daily Budget: ${budget} per day
     Interests: {', '.join(interests)}
@@ -166,6 +329,7 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     - 💳 **Check-in and Security**: [important tips]
     - 💰 **Departure Costs**: [breakdown of costs]]
     (Make sure that this is formatted correctly!)
+    (Make sure to include the airplane tickets for the departure city to first location!)
     
     # 📅 Multi-City Itinerary
     [Create an exciting day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, MUST INCLUDE ALL OF THE FOLLOWING AND COSTS(if applicable):
@@ -176,6 +340,13 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     - 🚆 **Travel Details**: [if applicable, with practical tips]
     - 🏨 **Accommodation**: [hotel details with standout features] [MUST INCLUDE COST AND BE PRESENT IN EVERY DAY'S ITINERARY]
     - 💰 **Daily Spending**: $X (separate bullet point)]
+    
+    # 🚗 Return to {return_city}
+    [Detailed information about returning to {return_city}, including:
+    - 🏠 **Getting to the Airport/Station**: [transportation options and costs]
+    - ⏰ **Recommended Departure Time**: [timing suggestions]
+    - 💳 **Check-in and Security**: [important tips]
+    - 💰 **Return Costs**: [breakdown of costs including airplane tickets]]
     
     # 🏨 Accommodation Recommendations
     [Curated list of accommodations with unique selling points and atmosphere descriptions]
@@ -198,6 +369,10 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     
     # 🎒 Packing Recommendations
     [Smart packing list organized by category with insider tips]
+
+    Re-check for any formatting errors (including when there are itallicized words with no spaces in between) and correctness in calculations before printing the itinerary.
+    !!!Make sure to print the entire itinerary every single time. Don't just stop halfway through.!!!
+    Make sure that the costs for each day and the total cost of the trip are summed up correctly.
     """
     try:
         response = model.generate_content(prompt)
@@ -205,9 +380,32 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     except Exception as e:
         return f"Error generating travel plan: {str(e)}"
 
+def get_travel_assistant_response(question: str) -> str:
+    """Get AI response in LeBron's style"""
+    prompt = f"""
+    You are LeBron James acting as a knowledgeable and friendly travel advisor. 
+    Respond to this travel-related question in LeBron's voice - casual, confident, and using some of his common phrases.
+    Keep responses brief but helpful, and maintain LeBron's personality traits:
+    - Use "young fella" or "young king/queen" occasionally
+    - Reference basketball metaphors when relevant
+    - Stay positive and motivational
+    - Use phrases like "you know what I'm saying" or "that's what I'm talking about"
+    - Keep it professional but casual
+    - Use basketball analogies when giving travel advice
+    - Occasionally mention your experience traveling for games
+    - Add some of your signature phrases like "Strive for Greatness" or "The Kid from Akron"
+    - Be encouraging and mentor-like
+    
+    Question: {question}
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return "Hey young fella, having some technical difficulties. Let's take a timeout and try again in a bit! 👑"
+
 # Professional sidebar interface
 with st.sidebar:
-    st.image("https://img.icons8.com/clouds/100/airplane-mode-on.png", width=100)
     st.title("Trip Parameters")
     
     # Add starting location input
@@ -215,6 +413,13 @@ with st.sidebar:
         "Starting Location",
         placeholder="e.g., New York, USA",
         help="Enter your departure city and country"
+    )
+    
+    # Add return city input
+    return_city = st.text_input(
+        "Return City",
+        placeholder="e.g., Los Angeles, USA",
+        help="Enter the city you want to return to"
     )
     
     # Enhanced destination input
@@ -260,15 +465,38 @@ with st.sidebar:
         help="Set your daily budget in USD"
     )
     
-    # Refined interests selection
-    interests = st.multiselect(
+    # Refined interests selection with "Other" option
+    predefined_interests = [
+        "Culture & History", "Food & Cuisine", "Nature & Outdoors", 
+        "Shopping", "Art & Museums", "Nightlife", "Adventure Sports",
+        "Local Experiences", "Photography", "Architecture", "Wellness & Spa",
+        "Music & Festivals", "Religious Sites", "Wine & Spirits", "Beach Activities",
+        "Wildlife & Safaris", "Winter Sports", "Water Sports", "Hiking & Trekking",
+        "Luxury Experiences", "Budget Travel", "Solo Travel", "Family Activities",
+        "Romantic Getaways", "Educational Tours", "Volunteer Opportunities",
+        "Eco Tourism", "Urban Exploration", "Rural Tourism", "Other"
+    ]
+    
+    selected_interests = st.multiselect(
         "Interests",
-        ["Culture & History", "Food & Cuisine", "Nature & Outdoors", 
-         "Shopping", "Art & Museums", "Nightlife", "Adventure Sports",
-         "Local Experiences", "Photography", "Architecture"],
+        predefined_interests,
         ["Culture & History", "Food & Cuisine"],
         help="Select your travel interests"
     )
+    
+    # Show text input for custom interests if "Other" is selected
+    if "Other" in selected_interests:
+        custom_interest = st.text_input(
+            "Enter your custom interest",
+            placeholder="e.g., Street Art Photography",
+            help="Type in your specific interest"
+        )
+        if custom_interest:
+            # Remove "Other" and add the custom interest
+            selected_interests.remove("Other")
+            selected_interests.append(custom_interest)
+    
+    interests = selected_interests
     
     # Language preference
     language = st.selectbox(
@@ -390,38 +618,46 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
     return pdf
 
 # Main content area with professional layout
-st.title("🌎 AI Travel Planner Pro")
+st.title("🌎 AI Trip Saver")
 st.markdown("Your intelligent AI-powered travel planning solution")
 
 # Create organized tabs for different views
-tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "Travel History"])
+tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "🏀 LeBron's Travel Assistant"])
+
+# Initialize tab selection in session state
+if 'selected_tab' not in st.session_state:
+    st.session_state.selected_tab = 0
 
 with tab1:
     if st.button("Generate Travel Plan", type="primary"):
-        if starting_location and destinations and len(destinations) == num_destinations and interests:
+        if starting_location and destinations and len(destinations) == num_destinations and interests and return_city:
             # Calculate budget estimates
             duration = (end_date - start_date).days + 1
             budget_data = calculate_budget_estimate(duration, budget, " to ".join(destinations))
             
             # Generate and display travel plan
             with st.spinner('Crafting your personalized travel plan...'):
-                travel_plan = generate_travel_plan(starting_location, destinations, start_date, end_date, budget, interests)
+                travel_plan = generate_travel_plan(starting_location, destinations, start_date, end_date, budget, interests, return_city)
                 
                 # Save to history
                 st.session_state.travel_history.append({
                     "starting_location": starting_location,
                     "destination": " to ".join(destinations),
+                    "return_city": return_city,
                     "date": start_date.strftime("%Y-%m-%d"),
                     "duration": duration,
                     "budget": budget,
                     "estimated_cost": budget_data["total_estimate"]
                 })
             
+            # Store travel plan in session state
+            st.session_state.current_travel_plan = travel_plan
+            
             # Display the plan
             st.markdown(travel_plan)
             
             # Enhanced download options
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.download_button(
                     label="📥 Download as Text",
@@ -440,8 +676,27 @@ with tab1:
                     )
                 except Exception as e:
                     st.error(f"Error creating PDF: {str(e)}")
+            with col3:
+                if st.button("📅 Add to Google Calendar"):
+                    try:
+                        add_to_google_calendar(
+                            st.session_state.current_travel_plan,
+                            datetime.combine(start_date, datetime.min.time()),
+                            datetime.combine(end_date, datetime.min.time()),
+                            destinations
+                        )
+                    except Exception as e:
+                        st.error(f"Failed to add to Google Calendar: {str(e)}")
         else:
             st.error("Please complete all required fields to generate your travel plan.")
+
+    # Add floating LeBron navigator
+    st.markdown("""
+        <div class="floating-lebron-nav" onclick="document.getElementsByClassName('st-emotion-cache-1v7p1xi e1nzilvr5')[2].click();">
+            <div class="lebron-tooltip">Chat with LeBron using the Lebron Travel Assistant Tab</div>
+            <img src="https://cdn.nba.com/headshots/nba/latest/1040x760/2544.png" alt="Chat with LeBron using the Lebron Travel Assistant Tab">
+        </div>
+    """, unsafe_allow_html=True)
 
 with tab2:
     if len(st.session_state.travel_history) > 0:
@@ -589,11 +844,45 @@ with tab2:
         st.info("Generate travel plans to view detailed budget analysis.")
 
 with tab3:
-    if len(st.session_state.travel_history) > 0:
-        st.subheader("Your Travel History")
-        st.dataframe(pd.DataFrame(st.session_state.travel_history))
-    else:
-        st.info("Your travel history will be displayed here after generating plans.")
+    col1, col2 = st.columns([0.1, 0.9])
+    with col1:
+        st.image("https://cdn.nba.com/headshots/nba/latest/1040x760/2544.png", width=60)
+    with col2:
+        st.subheader("🏀 Chat with LeBron")
+    
+    st.markdown("Hey young fella! I'm LeBron, and I'm here to help you plan your next adventure. What's on your mind? 👑")
+
+    # Initialize chat history
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Display chat history
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Update the chat input placeholder
+    if prompt := st.chat_input("Ask King James about your travel plans..."):
+        # Add user message to chat history
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get and display assistant response
+        with st.chat_message("assistant"):
+            response = get_travel_assistant_response(prompt)
+            st.markdown(response)
+            
+        # Add assistant response to chat history
+        st.session_state.chat_history.append({"role": "assistant", "content": response})
+
+    # Add clear chat button
+    if st.session_state.chat_history:
+        if st.button("Clear Chat History"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 # Enhanced footer with professional tips
 st.markdown("---")
