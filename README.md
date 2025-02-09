@@ -18,7 +18,6 @@ This is a travel planner that uses AI to create a detailed travel plan based on 
 
 - Create a detailed travel plan based on the user's input
 - Create a PDF of the travel plan
-- Create a PDF of the travel plan
 
 ## How to run
 
