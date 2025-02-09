@@ -138,7 +138,7 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     destinations_str = " to ".join(destinations)
     
     prompt = f"""
-    Create a detailed multi-destination travel plan that uses AT LEAST 80% of the daily budget of ${budget} every day. 
+    Create a detailed multi-destination travel plan that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
     All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget.
     
     Destinations: {destinations_str}
@@ -146,52 +146,45 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     Daily Budget: ${budget} per day
     Interests: {', '.join(interests)}
     
-    Please provide the response in the following structured format:
+    Please provide the response in the following structured format, using emojis, bold text (**), italics (_), and bullet points to make the content engaging:
 
-    Don't include this part, but make sure that after commas or periods, the formatting is not messed up. This includes itallicized texts with no spaces in between. 
-    Don't include this part, but make sure that the formatting is not messed up for the entire itinerary, including bullet points. 
-
-    # Overview
-    [Brief introduction about the trip and why these destinations work well together]
+    # ✨ Overview
+    [Write an engaging introduction using descriptive language and metaphors about the trip and why these destinations complement each other perfectly]
     
-    # Weather and Best Time to Visit
-    [Information about weather during the travel period for each destination. If the destination is visited multiple times, provide the weather for each visit.]
+    # 🌤️ Weather and Best Time to Visit
+    [Vivid description of the weather and atmosphere during the travel period for each destination]
     
-    # Multi-City Itinerary
-    [Detailed day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, which MUST include
-    - Morning activities and costs
-    - Afternoon activities and costs
-    - Evening activities and costs
-    - Restaurant recommendations near the area of the activities
-    - Travel between destinations if applicable
-    - MUST INCLUDE: Hotel costs
-    - Daily spending total (formatted as Spending: $X). Make sure that this is on its own separate bullet point. Make sure X is greater than 0.8 * ${budget}. If it is not, make sure to adjust the activities and costs to make sure that the daily spending is at least 80% of the daily budget.
-    Make sure that every single day is its separate day in the itinerary.]
+    # 📅 Multi-City Itinerary
+    [Create an exciting day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, including:
+    - 🌅 **Morning**: [activities and costs with descriptive details]
+    - ☀️ **Afternoon**: [activities and costs with engaging descriptions]
+    - 🌙 **Evening**: [activities and costs with atmospheric details]
+    - 🍽️ **Where to Eat**: [restaurant recommendations with signature dishes]
+    - 🚆 **Travel Details**: [if applicable, with practical tips]
+    - 🏨 **Accommodation**: [hotel details with standout features]
+    - 💰 **Daily Spending**: $X (separate bullet point)]
     
-    # Accommodation Recommendations
-    [List of ONLY hotels/hostels/accommodations that actually cost less than ${float(budget) * 0.5} per night in each city]
+    # 🏨 Accommodation Recommendations
+    [Curated list of accommodations with unique selling points and atmosphere descriptions]
     
-    # Transportation
-    [Detailed transportation options between cities and within each destination, with real costs]
+    # 🚌 Transportation
+    [Comprehensive transportation guide with insider tips and local knowledge]
     
-    # Local Customs & Etiquette
-    [Important cultural notes and etiquette tips for each destination]
+    # 🎭 Local Customs & Etiquette
+    [Engaging cultural insights and etiquette tips written as interesting stories or scenarios]
     
-    # Must-Try Local Cuisine
-    [List of recommended local dishes with actual price ranges for each destination]
+    # 🍜 Must-Try Local Cuisine
+    [Mouth-watering descriptions of local dishes with cultural context and price ranges]
     
-    # Safety Tips
-    [Important safety information and emergency contacts for each location]
+    # 🛡️ Safety Tips
+    [Essential safety information presented in a clear, actionable format]
     
-    # Estimated Costs
-    [Detailed cost breakdown showing exactly how the ${budget} daily budget will be spent]
-    [Sum the total estimated cost of the trip and format it as Total: $X] Make sure that this sum is correct by double checking before you print it out.
-
-    Don't include this part, but make sure that after commas or periods, the formatting is not messed up. This includes itallicized texts with no spaces in between. 
-    Don't include this part, but make sure that the formatting is not messed up for the entire itinerary, including bullet points. 
+    # 💰 Estimated Costs
+    [Detailed breakdown with visual organization using bullets and categories]
+    **Total Trip Cost: $X**
     
-    # Packing Recommendations
-    [Season-appropriate packing list for all destinations]
+    # 🎒 Packing Recommendations
+    [Smart packing list organized by category with insider tips]
     """
     try:
         response = model.generate_content(prompt)
