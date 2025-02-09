@@ -1,9 +1,12 @@
 streamlit
 os
-google.generativeai
+google-generativeai
 datetime
 json
 pandas
 plotly
 fpdf
 io
+phidata
+openai
+duckduckgo-search
