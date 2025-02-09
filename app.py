@@ -231,7 +231,7 @@ def calculate_budget_estimate(duration: int, daily_budget: int, destination: str
         "breakdown": breakdown
     }
 
-def generate_travel_plan(starting_location: str, destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list) -> str:
+def generate_travel_plan(starting_location: str, destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list, return_city: str) -> str:
     """
     Generate comprehensive travel plans using AI with structured formatting.
     """
@@ -239,12 +239,13 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     destinations_str = " to ".join(destinations)
     
     prompt = f"""
-    Create a detailed multi-destination travel plan starting from {starting_location} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
+    Create a detailed multi-destination travel plan starting from {starting_location} and returning to {return_city} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
     All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. 
-    Make sure to print the entire itinerary every single time. Don't just stop halfway through.
+    Make sure to print the entire itinerary every single time. Don't just stop halfway through. (Make sure there are no itallicized words with no spaces in between)
 
     Starting Location: {starting_location}
     Destinations: {destinations_str}
+    Return City: {return_city}
     Travel Dates: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} ({duration} days)
     Daily Budget: ${budget} per day
     Interests: {', '.join(interests)}
@@ -276,6 +277,13 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     - 🏨 **Accommodation**: [hotel details with standout features] [MUST INCLUDE COST AND BE PRESENT IN EVERY DAY'S ITINERARY]
     - 💰 **Daily Spending**: $X (separate bullet point)]
     
+    # 🚗 Return to {return_city}
+    [Detailed information about returning to {return_city}, including:
+    - 🏠 **Getting to the Airport/Station**: [transportation options and costs]
+    - ⏰ **Recommended Departure Time**: [timing suggestions]
+    - 💳 **Check-in and Security**: [important tips]
+    - 💰 **Return Costs**: [breakdown of costs including airplane tickets]]
+    
     # 🏨 Accommodation Recommendations
     [Curated list of accommodations with unique selling points and atmosphere descriptions]
     
@@ -298,9 +306,9 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     # 🎒 Packing Recommendations
     [Smart packing list organized by category with insider tips]
 
-    Re-check for any formatting errors and correctness in calculations before printing the itinerary.
-    Make sure to print the entire itinerary every single time. Don't just stop halfway through.
-    Make sure to include the costs for each day and the total cost of the trip.
+    Re-check for any formatting errors (including when there are itallicized words with no spaces in between) and correctness in calculations before printing the itinerary.
+    !!!Make sure to print the entire itinerary every single time. Don't just stop halfway through.!!!
+    Make sure that the costs for each day and the total cost of the trip are summed up correctly.
     """
     try:
         response = model.generate_content(prompt)
@@ -317,6 +325,13 @@ with st.sidebar:
         "Starting Location",
         placeholder="e.g., New York, USA",
         help="Enter your departure city and country"
+    )
+    
+    # Add return city input
+    return_city = st.text_input(
+        "Return City",
+        placeholder="e.g., Los Angeles, USA",
+        help="Enter the city you want to return to"
     )
     
     # Enhanced destination input
@@ -362,15 +377,38 @@ with st.sidebar:
         help="Set your daily budget in USD"
     )
     
-    # Refined interests selection
-    interests = st.multiselect(
+    # Refined interests selection with "Other" option
+    predefined_interests = [
+        "Culture & History", "Food & Cuisine", "Nature & Outdoors", 
+        "Shopping", "Art & Museums", "Nightlife", "Adventure Sports",
+        "Local Experiences", "Photography", "Architecture", "Wellness & Spa",
+        "Music & Festivals", "Religious Sites", "Wine & Spirits", "Beach Activities",
+        "Wildlife & Safaris", "Winter Sports", "Water Sports", "Hiking & Trekking",
+        "Luxury Experiences", "Budget Travel", "Solo Travel", "Family Activities",
+        "Romantic Getaways", "Educational Tours", "Volunteer Opportunities",
+        "Eco Tourism", "Urban Exploration", "Rural Tourism", "Other"
+    ]
+    
+    selected_interests = st.multiselect(
         "Interests",
-        ["Culture & History", "Food & Cuisine", "Nature & Outdoors", 
-         "Shopping", "Art & Museums", "Nightlife", "Adventure Sports",
-         "Local Experiences", "Photography", "Architecture"],
+        predefined_interests,
         ["Culture & History", "Food & Cuisine"],
         help="Select your travel interests"
     )
+    
+    # Show text input for custom interests if "Other" is selected
+    if "Other" in selected_interests:
+        custom_interest = st.text_input(
+            "Enter your custom interest",
+            placeholder="e.g., Street Art Photography",
+            help="Type in your specific interest"
+        )
+        if custom_interest:
+            # Remove "Other" and add the custom interest
+            selected_interests.remove("Other")
+            selected_interests.append(custom_interest)
+    
+    interests = selected_interests
     
     # Language preference
     language = st.selectbox(
@@ -500,19 +538,20 @@ tab1, tab2 = st.tabs(["Plan Generator", "Budget Analysis"])
 
 with tab1:
     if st.button("Generate Travel Plan", type="primary"):
-        if starting_location and destinations and len(destinations) == num_destinations and interests:
+        if starting_location and destinations and len(destinations) == num_destinations and interests and return_city:
             # Calculate budget estimates
             duration = (end_date - start_date).days + 1
             budget_data = calculate_budget_estimate(duration, budget, " to ".join(destinations))
             
             # Generate and display travel plan
             with st.spinner('Crafting your personalized travel plan...'):
-                travel_plan = generate_travel_plan(starting_location, destinations, start_date, end_date, budget, interests)
+                travel_plan = generate_travel_plan(starting_location, destinations, start_date, end_date, budget, interests, return_city)
                 
                 # Save to history
                 st.session_state.travel_history.append({
                     "starting_location": starting_location,
                     "destination": " to ".join(destinations),
+                    "return_city": return_city,
                     "date": start_date.strftime("%Y-%m-%d"),
                     "duration": duration,
                     "budget": budget,
