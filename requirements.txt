@@ -1,0 +1,9 @@
+streamlit
+google-generativeai
+datetime
+pandas
+plotly
+fpdf
+phidata
+openai
+duckduckgo-search
