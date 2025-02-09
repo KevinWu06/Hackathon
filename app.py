@@ -6,8 +6,7 @@ import json
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from fpdf import FPDF
-import io
+from fpdf import FPDF 
 
 # Configure page with professional settings
 st.set_page_config(
