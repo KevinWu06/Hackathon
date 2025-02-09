@@ -1,11 +1,9 @@
 streamlit
 google-generativeai
 datetime
-json
 pandas
 plotly
 fpdf
-io
 phidata
 openai
 duckduckgo-search
