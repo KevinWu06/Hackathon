@@ -1,0 +1,9 @@
+streamlit
+os
+google.generativeai
+datetime
+json
+pandas
+plotly
+fpdf
+io
