@@ -12,6 +12,14 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
+# Add new imports for Google Calendar
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request
+import pickle
+from PIL import Image
 
 # Configure page with professional settings
 st.set_page_config(
@@ -614,7 +622,11 @@ st.title("🌎 AI Trip Saver")
 st.markdown("Your intelligent AI-powered travel planning solution")
 
 # Create organized tabs for different views
-tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "Travel History"])
+tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "🏀 LeBron's Travel Assistant"])
+
+# Initialize tab selection in session state
+if 'selected_tab' not in st.session_state:
+    st.session_state.selected_tab = 0
 
 with tab1:
     if st.button("Generate Travel Plan", type="primary"):
@@ -832,11 +844,45 @@ with tab2:
         st.info("Generate travel plans to view detailed budget analysis.")
 
 with tab3:
-    if len(st.session_state.travel_history) > 0:
-        st.subheader("Your Travel History")
-        st.dataframe(pd.DataFrame(st.session_state.travel_history))
-    else:
-        st.info("Your travel history will be displayed here after generating plans.")
+    col1, col2 = st.columns([0.1, 0.9])
+    with col1:
+        st.image("https://cdn.nba.com/headshots/nba/latest/1040x760/2544.png", width=60)
+    with col2:
+        st.subheader("🏀 Chat with LeBron")
+    
+    st.markdown("Hey young fella! I'm LeBron, and I'm here to help you plan your next adventure. What's on your mind? 👑")
+
+    # Initialize chat history
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Display chat history
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Update the chat input placeholder
+    if prompt := st.chat_input("Ask King James about your travel plans..."):
+        # Add user message to chat history
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Get and display assistant response
+        with st.chat_message("assistant"):
+            response = get_travel_assistant_response(prompt)
+            st.markdown(response)
+            
+        # Add assistant response to chat history
+        st.session_state.chat_history.append({"role": "assistant", "content": response})
+
+    # Add clear chat button
+    if st.session_state.chat_history:
+        if st.button("Clear Chat History"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 # Enhanced footer with professional tips
 st.markdown("---")
