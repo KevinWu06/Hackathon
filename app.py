@@ -134,7 +134,7 @@ def calculate_budget_estimate(duration: int, daily_budget: int, destination: str
         "breakdown": breakdown
     }
 
-def generate_travel_plan(destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list) -> str:
+def generate_travel_plan(starting_location: str, destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list) -> str:
     """
     Generate comprehensive travel plans using AI with structured formatting.
     """
@@ -142,9 +142,10 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     destinations_str = " to ".join(destinations)
     
     prompt = f"""
-    Create a detailed multi-destination travel plan that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
-    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget.
-    
+    Create a detailed multi-destination travel plan starting from {starting_location} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
+    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. Make sure to print the entire itinerary every single time.
+
+    Starting Location: {starting_location}
     Destinations: {destinations_str}
     Travel Dates: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} ({duration} days)
     Daily Budget: ${budget} per day
@@ -158,14 +159,22 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
     # 🌤️ Weather and Best Time to Visit
     [Vivid description of the weather and atmosphere during the travel period for each destination]
     
+    # 🚗 Departure from {starting_location}
+    [Detailed information about departing from the starting location, including:
+    - 🏠 **Getting to the Airport/Station**: [transportation options and costs]
+    - ⏰ **Recommended Arrival Time**: [timing suggestions]
+    - 💳 **Check-in and Security**: [important tips]
+    - 💰 **Departure Costs**: [breakdown of costs]]
+    (Make sure that this is formatted correctly!)
+    
     # 📅 Multi-City Itinerary
-    [Create an exciting day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, including:
+    [Create an exciting day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, MUST INCLUDE ALL OF THE FOLLOWING AND COSTS(if applicable):
     - 🌅 **Morning**: [activities and costs with descriptive details]
     - ☀️ **Afternoon**: [activities and costs with engaging descriptions]
     - 🌙 **Evening**: [activities and costs with atmospheric details]
-    - 🍽️ **Where to Eat**: [restaurant recommendations with signature dishes]
+    - 🍽️ **Where to Eat**: [restaurant recommendations with signature dishes and MUST INCLUDE COSTS]
     - 🚆 **Travel Details**: [if applicable, with practical tips]
-    - 🏨 **Accommodation**: [hotel details with standout features]
+    - 🏨 **Accommodation**: [hotel details with standout features] [MUST INCLUDE COST AND BE PRESENT IN EVERY DAY'S ITINERARY]
     - 💰 **Daily Spending**: $X (separate bullet point)]
     
     # 🏨 Accommodation Recommendations
@@ -200,6 +209,13 @@ def generate_travel_plan(destinations: list, start_date: datetime, end_date: dat
 with st.sidebar:
     st.image("https://img.icons8.com/clouds/100/airplane-mode-on.png", width=100)
     st.title("Trip Parameters")
+    
+    # Add starting location input
+    starting_location = st.text_input(
+        "Starting Location",
+        placeholder="e.g., New York, USA",
+        help="Enter your departure city and country"
+    )
     
     # Enhanced destination input
     destinations = []
@@ -382,17 +398,18 @@ tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "Travel History
 
 with tab1:
     if st.button("Generate Travel Plan", type="primary"):
-        if destinations and len(destinations) == num_destinations and interests:
+        if starting_location and destinations and len(destinations) == num_destinations and interests:
             # Calculate budget estimates
             duration = (end_date - start_date).days + 1
             budget_data = calculate_budget_estimate(duration, budget, " to ".join(destinations))
             
             # Generate and display travel plan
             with st.spinner('Crafting your personalized travel plan...'):
-                travel_plan = generate_travel_plan(destinations, start_date, end_date, budget, interests)
+                travel_plan = generate_travel_plan(starting_location, destinations, start_date, end_date, budget, interests)
                 
                 # Save to history
                 st.session_state.travel_history.append({
+                    "starting_location": starting_location,
                     "destination": " to ".join(destinations),
                     "date": start_date.strftime("%Y-%m-%d"),
                     "duration": duration,
