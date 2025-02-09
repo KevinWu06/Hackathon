@@ -9,10 +9,12 @@ This is a travel planner that uses AI to create a detailed travel plan based on 
 ## Technologies Used
 
 - Python
+- HTML/CSS
 - Streamlit
 - OpenAI
 - Langchain
-- PyPDF2    
+- PyPDF2
+- PHP    
 
 ## Features
 
