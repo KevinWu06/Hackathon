@@ -28,4 +28,4 @@ This is a travel planner that uses AI to create a detailed travel plan based on 
 
 ## Website
 
-[https://tripsaver.onrender.com/](url)
+https://tripsaver.onrender.com/
