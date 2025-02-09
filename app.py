@@ -264,6 +264,7 @@ def generate_travel_plan(starting_location: str, destinations: list, start_date:
     - 💳 **Check-in and Security**: [important tips]
     - 💰 **Departure Costs**: [breakdown of costs]]
     (Make sure that this is formatted correctly!)
+    (Make sure to include the airplane tickets for the departure city to first location!)
     
     # 📅 Multi-City Itinerary
     [Create an exciting day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, MUST INCLUDE ALL OF THE FOLLOWING AND COSTS(if applicable):
@@ -495,7 +496,7 @@ st.title("🌎 AI Trip Saver")
 st.markdown("Your intelligent AI-powered travel planning solution")
 
 # Create organized tabs for different views
-tab1, tab2, tab3 = st.tabs(["Plan Generator", "Budget Analysis", "Travel History"])
+tab1, tab2 = st.tabs(["Plan Generator", "Budget Analysis"])
 
 with tab1:
     if st.button("Generate Travel Plan", type="primary"):
@@ -702,13 +703,6 @@ with tab2:
         
     else:
         st.info("Generate travel plans to view detailed budget analysis.")
-
-with tab3:
-    if len(st.session_state.travel_history) > 0:
-        st.subheader("Your Travel History")
-        st.dataframe(pd.DataFrame(st.session_state.travel_history))
-    else:
-        st.info("Your travel history will be displayed here after generating plans.")
 
 # Enhanced footer with professional tips
 st.markdown("---")
