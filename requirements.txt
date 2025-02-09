@@ -7,3 +7,5 @@ fpdf
 phidata
 openai
 duckduckgo-search
+reportlab
+google-auth-oauthlib
