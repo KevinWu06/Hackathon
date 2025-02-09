@@ -179,25 +179,20 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 def get_google_calendar_service():
     """Get or create Google Calendar API service"""
     creds = None
-    
     # Load credentials from pickle file if it exists
     if os.path.exists('token.pickle'):
         with open('token.pickle', 'rb') as token:
             creds = pickle.load(token)
-            
     # If no valid credentials available, let the user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-            
         # Save the credentials for the next run
         with open('token.pickle', 'wb') as token:
             pickle.dump(creds, token)
-
     try:
         service = build('calendar', 'v3', credentials=creds)
         return service
@@ -212,17 +207,14 @@ def add_to_google_calendar(travel_plan, start_date, end_date, destinations):
         if not service:
             st.error("Could not initialize Google Calendar service")
             return
-            
         # Parse the travel plan to create calendar events
         lines = travel_plan.split('\n')
         current_date = start_date
-        
         for line in lines:
             if '**Morning**:' in line or '**Afternoon**:' in line or '**Evening**:' in line:
                 # Extract time of day and activity
                 time_of_day = line.split('**')[1].lower()
                 activity = line.split(':', 1)[1].strip()
-                
                 # Set event times based on time of day
                 if 'morning' in time_of_day:
                     start_time = current_date.replace(hour=9, minute=0)
@@ -233,7 +225,6 @@ def add_to_google_calendar(travel_plan, start_date, end_date, destinations):
                 else:  # evening
                     start_time = current_date.replace(hour=18, minute=0)
                     end_time = current_date.replace(hour=22, minute=0)
-                
                 # Create calendar event
                 event = {
                     'summary': f"Travel: {', '.join(destinations)} - {time_of_day.title()}",
@@ -247,19 +238,15 @@ def add_to_google_calendar(travel_plan, start_date, end_date, destinations):
                         'timeZone': 'UTC',
                     },
                 }
-                
                 try:
                     service.events().insert(calendarId='primary', body=event).execute()
                 except Exception as e:
                     st.error(f"Error adding event to calendar: {str(e)}")
                     return
-            
             # Move to next day if we see a new date marker
             if "# 📅" in line:
                 current_date += timedelta(days=1)
-        
         st.success("Successfully added travel itinerary to Google Calendar!")
-        
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
 
@@ -281,104 +268,126 @@ def calculate_budget_estimate(duration: int, daily_budget: int, destination: str
     Calculate detailed budget estimates with standard travel expense ratios.
     """
     total_estimate = daily_budget * duration
-    
     breakdown = {
         "accommodation": round(daily_budget * 0.4, 2),  # 40% for accommodation
         "food": round(daily_budget * 0.2, 2),           # 20% for food
         "activities": round(daily_budget * 0.2, 2),     # 20% for activities
-        "transportation": round(daily_budget * 0.2, 2)  # 20% for transportation
+        "transportation": round(daily_budget * 0.2, 2)    # 20% for transportation
     }
-    
     return {
         "daily_total": daily_budget,
         "total_estimate": total_estimate,
         "breakdown": breakdown
     }
 
+# Helper function to generate each section using a smaller prompt
+def generate_section(header: str, prompt: str) -> str:
+    try:
+        response = model.generate_content(prompt)
+        return f"# {header}\n{response.text}\n"
+    except Exception as e:
+        return f"# {header}\nError generating this section: {str(e)}\n"
+
 def generate_travel_plan(starting_location: str, destinations: list, start_date: datetime, end_date: datetime, budget: str, interests: list, return_city: str) -> str:
     """
-    Generate comprehensive travel plans using AI with structured formatting.
+    Generate a comprehensive travel plan by breaking the prompt into smaller sections.
     """
     duration = (end_date - start_date).days + 1
     destinations_str = " to ".join(destinations)
     
-    prompt = f"""
-    Create a detailed multi-destination travel plan starting from {starting_location} and returning to {return_city} that uses AT LEAST 80% of the daily budget of ${budget} every day. DO NOT USE more than 100% of the ${budget} for any singular day on the itinerary.
-    All recommendations for accommodations, activities, food, and transportation MUST be realistic and achievable within this budget. Put every cost in USD. Triple check the following for any formatting errors and correctness in calculations before printing the itinerary. 
-    Make sure to print the entire itinerary every single time. Don't just stop halfway through. (Make sure there are no itallicized words with no spaces in between)
+    # Calculate budget data
+    budget_data = calculate_budget_estimate(duration, budget, destinations_str)
+    
+    # Define smaller prompts for each section
+    overview_prompt = (
+        f"Write an engaging introduction for a travel plan that starts at {starting_location} and visits {destinations_str} "
+        f"before returning to {return_city}. Include travel dates from {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} "
+        f"({duration} days) and highlight the daily budget of ${budget}. Use descriptive language, metaphors, and engaging imagery."
+    )
+    
+    weather_prompt = (
+        f"Describe the typical weather and best time to visit for the destinations {destinations_str} "
+        f"during the period from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}. Provide vivid and enticing descriptions."
+    )
+    
+    departure_prompt = (
+        f"Provide detailed departure instructions from {starting_location}. Include tips for getting to the airport/station, "
+        " and estimated costs (including airplane tickets to the first destination). Make sure to put dollar signs in front of all monetary values."
+    )
+    
+    itinerary_prompt = (
+        f"Generate a day-by-day multi-city itinerary for each day from {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}. "
+        "For each day, include sections for **Morning**, **Afternoon**, and **Evening** with activity descriptions, costs, restaurant recommendations, "
+        "travel details, hotel accommodation details (with cost), and a daily spending summary."
+    )
+    
+    return_prompt = (
+        f"Outline the return journey to {return_city} from the final destination. Include transportation options, recommended departure times, "
+        "check-in and security tips, and a cost breakdown (including airplane tickets)."
+    )
+    
+    accommodations_prompt = (
+        f"List and describe recommended accommodations for the destinations {destinations_str}. Include unique selling points, standout features, "
+        "atmosphere descriptions, and cost details."
+    )
+    
+    transportation_prompt = (
+        f"Provide a comprehensive guide on local transportation options for {destinations_str}, including insider tips and cost estimates."
+    )
+    
+    culture_prompt = (
+        f"Share engaging cultural insights, local customs, and etiquette tips for the destinations {destinations_str}. Present the information as interesting stories or scenarios. Keep it to one bullet point per unique location."
+    )
+    
+    cuisine_prompt = (
+        f"Describe must-try local cuisine for the destinations {destinations_str}. Include details on signature dishes, cultural context, and price ranges. Keep it to 3 bullet points per unique location."
+    )
+    
+    safety_prompt = (
+        f"List essential safety tips and guidelines for traveling in {destinations_str}. Ensure the tips are clear, actionable, short and concise."
+    )
+    
+    costs_prompt = f"""
+    💰 Here's a detailed cost breakdown for your {duration}-day trip:
 
-    Starting Location: {starting_location}
-    Destinations: {destinations_str}
-    Return City: {return_city}
-    Travel Dates: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} ({duration} days)
-    Daily Budget: ${budget} per day
-    Interests: {', '.join(interests)}
-    
-    Please provide the response in the following structured format, using emojis, bold text (**), italics (_), and bullet points to make the content engaging:
+    🏷️ Daily Budget: ${budget}
+    📊 Total Trip Estimate: ${budget_data['total_estimate']}
 
-    # ✨ Overview
-    [Write an engaging introduction using descriptive language and metaphors about the trip and why these destinations complement each other perfectly]
-    
-    # 🌤️ Weather and Best Time to Visit
-    [Vivid description of the weather and atmosphere during the travel period for each destination]
-    
-    # 🚗 Departure from {starting_location}
-    [Detailed information about departing from the starting location, including:
-    - 🏠 **Getting to the Airport/Station**: [transportation options and costs]
-    - ⏰ **Recommended Arrival Time**: [timing suggestions]
-    - 💳 **Check-in and Security**: [important tips]
-    - 💰 **Departure Costs**: [breakdown of costs]]
-    (Make sure that this is formatted correctly!)
-    (Make sure to include the airplane tickets for the departure city to first location!)
-    
-    # 📅 Multi-City Itinerary
-    [Create an exciting day-by-day breakdown for EACH day from {start_date.strftime('%B %d')} to {end_date.strftime('%B %d')}, MUST INCLUDE ALL OF THE FOLLOWING AND COSTS(if applicable):
-    - 🌅 **Morning**: [activities and costs with descriptive details]
-    - ☀️ **Afternoon**: [activities and costs with engaging descriptions]
-    - 🌙 **Evening**: [activities and costs with atmospheric details]
-    - 🍽️ **Where to Eat**: [restaurant recommendations with signature dishes and MUST INCLUDE COSTS]
-    - 🚆 **Travel Details**: [if applicable, with practical tips]
-    - 🏨 **Accommodation**: [hotel details with standout features] [MUST INCLUDE COST AND BE PRESENT IN EVERY DAY'S ITINERARY]
-    - 💰 **Daily Spending**: $X (separate bullet point)]
-    
-    # 🚗 Return to {return_city}
-    [Detailed information about returning to {return_city}, including:
-    - 🏠 **Getting to the Airport/Station**: [transportation options and costs]
-    - ⏰ **Recommended Departure Time**: [timing suggestions]
-    - 💳 **Check-in and Security**: [important tips]
-    - 💰 **Return Costs**: [breakdown of costs including airplane tickets]]
-    
-    # 🏨 Accommodation Recommendations
-    [Curated list of accommodations with unique selling points and atmosphere descriptions]
-    
-    # 🚌 Transportation
-    [Comprehensive transportation guide with insider tips and local knowledge]
-    
-    # 🎭 Local Customs & Etiquette
-    [Engaging cultural insights and etiquette tips written as interesting stories or scenarios]
-    
-    # 🍜 Must-Try Local Cuisine
-    [Mouth-watering descriptions of local dishes with cultural context and price ranges]
-    
-    # 🛡️ Safety Tips
-    [Essential safety information presented in a clear, actionable format]
-    
-    # 💰 Estimated Costs
-    [Detailed breakdown with visual organization using bullets and categories]
-    **Total Trip Cost: $X**
-    
-    # 🎒 Packing Recommendations
-    [Smart packing list organized by category with insider tips]
+    📅 Daily Breakdown:
+    - 🏨 Accommodation: ${budget_data['breakdown']['accommodation']} per day
+    - 🍽️ Food & Dining: ${budget_data['breakdown']['food']} per day
+    - 🎯 Activities & Entertainment: ${budget_data['breakdown']['activities']} per day
+    - 🚌 Local Transportation: ${budget_data['breakdown']['transportation']} per day
 
-    Re-check for any formatting errors (including when there are itallicized words with no spaces in between) and correctness in calculations before printing the itinerary.
-    !!!Make sure to print the entire itinerary every single time. Don't just stop halfway through.!!!
-    Make sure that the costs for each day and the total cost of the trip are summed up correctly.
+    💵 Total Trip Cost Categories:
+    - 🏢 Total Accommodation: ${budget_data['breakdown']['accommodation'] * duration}
+    - 🍳 Total Food & Dining: ${budget_data['breakdown']['food'] * duration}
+    - 🎪 Total Activities: ${budget_data['breakdown']['activities'] * duration}
+    - 🚕 Total Transportation: ${budget_data['breakdown']['transportation'] * duration}
+
+    💡 Please provide a detailed analysis of these costs and suggestions for potential savings.
     """
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Error generating travel plan: {str(e)}"
+    
+    packing_prompt = (
+        f"Create a smart, organized packing list for this multi-destination trip. Organize the list by category and include any insider tips. Keep this response to 4-5 concise bullet points"
+    )
+    
+    # Generate each section using the helper function
+    travel_plan = ""
+    travel_plan += generate_section("✨ Overview", overview_prompt)
+    travel_plan += generate_section("🌤️ Weather and Best Time to Visit", weather_prompt)
+    travel_plan += generate_section(f"🚗 Departure from {starting_location}", departure_prompt)
+    travel_plan += generate_section("📅 Multi-City Itinerary", itinerary_prompt)
+    travel_plan += generate_section(f"🚗 Return to {return_city}", return_prompt)
+    travel_plan += generate_section("🏨 Accommodation Recommendations", accommodations_prompt)
+    travel_plan += generate_section("🚌 Transportation", transportation_prompt)
+    travel_plan += generate_section("🎭 Local Customs & Etiquette", culture_prompt)
+    travel_plan += generate_section("🍜 Must-Try Local Cuisine", cuisine_prompt)
+    travel_plan += generate_section("🛡️ Safety Tips", safety_prompt)
+    travel_plan += generate_section("💰 Estimated Costs", costs_prompt)
+    travel_plan += generate_section("🎒 Packing Recommendations", packing_prompt)
+    
+    return travel_plan
 
 def get_travel_assistant_response(question: str) -> str:
     """Get AI response in LeBron's style"""
@@ -492,7 +501,6 @@ with st.sidebar:
             help="Type in your specific interest"
         )
         if custom_interest:
-            # Remove "Other" and add the custom interest
             selected_interests.remove("Other")
             selected_interests.append(custom_interest)
     
@@ -580,18 +588,14 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
         lines = section.split('\n')
         if not lines:
             continue
-            
         current_section = remove_emojis(lines[0].strip())
         content.append(Paragraph(format_markdown(current_section), heading_style))
-        
         bullet_group = []
         for line in lines[1:]:
             line = line.strip()
             if not line:
                 continue
-                
             cleaned_line = remove_emojis(line)
-            
             # Handle bullet points
             if line.startswith('-'):
                 cleaned_line = cleaned_line[1:].strip()  # Remove the bullet point
@@ -603,16 +607,13 @@ def create_pdf(travel_plan: str, destination: str) -> bytes:
                     bullet_group = []
                 formatted_line = format_markdown(cleaned_line)
                 content.append(Paragraph(formatted_line, body_style))
-        
         # Add any remaining bullet points
         if bullet_group:
             content.append(Paragraph('<br/>'.join(bullet_group), body_style))
-        
         content.append(Spacer(1, 12))
     
     # Build the PDF
     doc.build(content)
-    
     pdf = buffer.getvalue()
     buffer.close()
     return pdf
